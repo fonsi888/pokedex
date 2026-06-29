@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}Pokédex — 151 Pokémon Originales{% endblock %}
+
+{% block content %}
+<header>
+    <h1>Poké<span>dex</span></h1>
+    <div class="controls">
+        <input 
+            type="text" 
+            id="search-input" 
+            class="search-input" 
+            placeholder="🔍 Buscar Pokémon..."
+            autocomplete="off"
+        >
+        <select id="type-select" class="type-select">
+            <option value="">Todos los tipos</option>
+        </select>
+    </div>
+</header>
+
+<div class="pokemon-count" id="pokemon-count">Cargando Pokémon...</div>
+<div class="pokemon-grid" id="pokemon-grid">
+    <div class="loading">Cargando Pokémon</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const grid = document.getElementById('pokemon-grid');
+    const searchInput = document.getElementById('search-input');
+    const typeSelect = document.getElementById('type-select');
+    const countEl = document.getElementById('pokemon-count');
+
+    // Cargar tipos en el selector
+    async function loadTypes() {
+        const res = await fetch('/api/types');
+        const types = await res.json();
+        types.forEach(type => {
+            const option = document.createElement('option');
+            option.value = type.name;
+            option.textContent = type.name.charAt(0).toUpperCase() + type.name.slice(1);
+            typeSelect.appendChild(option);
+        });
+    }
+
+    // Renderizar tarjetas de Pokémon
+    function renderPokemon(pokemonList) {
+        if (pokemonList.length === 0) {
+            grid.innerHTML = '<div class="loading">No se encontraron Pokémon</div>';
+            countEl.textContent = '0 Pokémon encontrados';
+            return;
+        }
+
+        countEl.textContent = `${pokemonList.length} Pokémon encontrados`;
+        grid.innerHTML = pokemonList.map(p => `
+            <div class="pokemon-card" onclick="window.location='/pokemon/${p.pokeapi_id}'">
+                <div class="pokemon-number">#${String(p.pokeapi_id).padStart(3, '0')}</div>
+                <img 
+                    src="${p.image_url}" 
+                    alt="${p.name}"
+                    loading="lazy"
+                    onerror="this.src='/static/img/pokeball.png'"
+                >
+                <div class="pokemon-name">${p.name}</div>
+                <div class="pokemon-types">
+                    ${p.types.map(t => `
+                        <span class="type-badge type-${t.name}">${t.name}</span>
+                    `).join('')}
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // Cargar Pokémon con filtros
+    async function loadPokemon() {
+        grid.innerHTML = '<div class="loading">Cargando Pokémon</div>';
+        
+        let url = '/api/pokemon';
+        const search = searchInput.value.trim();
+        const type = typeSelect.value;
+
+        if (search) url += `?search=${encodeURIComponent(search)}`;
+        else if (type) url += `?type_filter=${encodeURIComponent(type)}`;
+
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            renderPokemon(data);
+        } catch (err) {
+            grid.innerHTML = '<div class="loading">Error cargando Pokémon</div>';
+        }
+    }
+
+    // Debounce para la búsqueda (espera 300ms antes de buscar)
+    let searchTimeout;
+    searchInput.addEventListener('input', () => {
+        typeSelect.value = '';
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(loadPokemon, 300);
+    });
+
+    typeSelect.addEventListener('change', () => {
+        searchInput.value = '';
+        loadPokemon();
+    });
+
+    // Inicializar
+    loadTypes();
+    loadPokemon();
+</script>
+{% endblock %}

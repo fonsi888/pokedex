@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}Pokédex — Detalle{% endblock %}
+
+{% block content %}
+<header>
+    <h1>Poké<span>dex</span></h1>
+</header>
+
+<div class="detail-container">
+    <a href="/" class="back-btn">← Volver al listado</a>
+    <div id="detail-content">
+        <div class="loading">Cargando Pokémon...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const pokemonId = {{ pokemon_id }};
+
+    function getStatColor(value) {
+        if (value >= 100) return '#78C850';
+        if (value >= 70) return '#F8D030';
+        if (value >= 50) return '#F08030';
+        return '#F85888';
+    }
+
+    function getStatWidth(value) {
+        return Math.min((value / 255) * 100, 100);
+    }
+
+    async function loadPokemon() {
+        try {
+            const res = await fetch(`/api/pokemon/${pokemonId}`);
+            if (!res.ok) {
+                document.getElementById('detail-content').innerHTML = 
+                    '<div class="loading">Pokémon no encontrado</div>';
+                return;
+            }
+            const p = await res.json();
+            renderDetail(p);
+        } catch (err) {
+            document.getElementById('detail-content').innerHTML = 
+                '<div class="loading">Error cargando Pokémon</div>';
+        }
+    }
+
+    async function getEvolutionData(pokemonId) {
+        const res = await fetch(`/api/pokemon/${pokemonId}`);
+        return await res.json();
+    }
+
+    async function renderEvolutions(pokemon) {
+        // Construir cadena completa de evolución
+        let chain = [];
+
+        if (pokemon.evolutions_to.length > 0) {
+            // Tiene una forma previa — buscar el origen
+            const prev = await getEvolutionData(pokemon.evolutions_to[0].from_pokemon_id);
+            chain.push(prev);
+            chain.push(pokemon);
+            if (pokemon.evolutions_from.length > 0) {
+                const next = await getEvolutionData(pokemon.evolutions_from[0].to_pokemon_id);
+                chain.push(next);
+            }
+        } else if (pokemon.evolutions_from.length > 0) {
+            // Es el primero de la cadena
+            chain.push(pokemon);
+            const next = await getEvolutionData(pokemon.evolutions_from[0].to_pokemon_id);
+            chain.push(next);
+            if (next.evolutions_from.length > 0) {
+                const final = await getEvolutionData(next.evolutions_from[0].to_pokemon_id);
+                chain.push(final);
+            }
+        } else {
+            return '<p style="color: rgba(255,255,255,0.5)">Este Pokémon no evoluciona.</p>';
+        }
+
+        return chain.map((evo, index) => `
+            ${index > 0 ? '<div class="evolution-arrow">→</div>' : ''}
+            <div class="evolution-item" onclick="window.location='/pokemon/${evo.pokeapi_id}'">
+                <img src="${evo.image_url}" alt="${evo.name}">
+                <p>#${String(evo.pokeapi_id).padStart(3,'0')} ${evo.name}</p>
+            </div>
+        `).join('');
+    }
+
+    async function renderDetail(p) {
+        const stats = p.stats;
+        const statNames = {
+            hp: 'HP',
+            attack: 'Ataque',
+            defense: 'Defensa',
+            special_attack: 'Atq. Esp.',
+            special_defense: 'Def. Esp.',
+            speed: 'Velocidad'
+        };
+
+        const evolutionsHTML = await renderEvolutions(p);
+
+        document.getElementById('detail-content').innerHTML = `
+            <div class="detail-card">
+                <div class="detail-header">
+                    <img class="detail-image" src="${p.image_url}" alt="${p.name}">
+                    <div class="detail-info">
+                        <div class="pokemon-number">#${String(p.pokeapi_id).padStart(3, '0')}</div>
+                        <h2>${p.name}</h2>
+                        <div class="pokemon-types" style="margin: 10px 0">
+                            ${p.types.map(t => `
+                                <span class="type-badge type-${t.name}">${t.name}</span>
+                            `).join('')}
+                        </div>
+                        <p class="detail-description">${p.description || ''}</p>
+                        <div class="detail-stats-grid">
+                            <div class="stat-item">
+                                🏋️ Peso<br>
+                                <span>${(p.weight / 10).toFixed(1)} kg</span>
+                            </div>
+                            <div class="stat-item">
+                                📏 Altura<br>
+                                <span>${(p.height / 10).toFixed(1)} m</span>
+                            </div>
+                            <div class="stat-item">
+                                ⭐ Exp. Base<br>
+                                <span>${p.base_experience}</span>
+                            </div>
+                            <div class="stat-item">
+                                🔢 Número<br>
+                                <span>#${String(p.pokeapi_id).padStart(3, '0')}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section-title">Estadísticas Base</div>
+                <div class="stats-bars">
+                    ${stats ? Object.entries(statNames).map(([key, label]) => `
+                        <div class="stat-bar-row">
+                            <div class="stat-bar-label">${label}</div>
+                            <div class="stat-bar-value">${stats[key]}</div>
+                            <div class="stat-bar-bg">
+                                <div class="stat-bar-fill" style="
+                                    width: ${getStatWidth(stats[key])}%;
+                                    background: ${getStatColor(stats[key])};
+                                "></div>
+                            </div>
+                        </div>
+                    `).join('') : '<p>Sin estadísticas</p>'}
+                </div>
+
+                <div class="section-title">Cadena de Evolución</div>
+                <div class="evolutions">
+                    ${evolutionsHTML}
+                </div>
+            </div>
+        `;
+    }
+
+    loadPokemon();
+</script>
+{% endblock %}
